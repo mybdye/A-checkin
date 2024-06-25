@@ -16,7 +16,7 @@ jobs:
   Checkin:
     runs-on: ubuntu-latest
     # 超时设置
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v3
