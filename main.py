@@ -16,13 +16,18 @@ from seleniumbase import SB
 
 
 def url_open(urlLogin):
+    """
+    打开登录页面
+    :param urlLogin: 登录页面URL
+    :return: 是否成功打开页面
+    """
     try:
         sb.open(urlLogin)
         sb.assert_element('#email', timeout=30)
-        print('- page access')
+        print('[INFO] - 成功访问登录页面')
         return True
     except Exception as e:
-        print('- 👀 sb.open(urlLogin)', e)
+        print(f'[ERROR] - 打开登录页面失败: {e}')
         return False
 
 
@@ -267,67 +272,78 @@ checkinButtonList = ('#checkin', 'a[onclick*="checkin()"]')
 trafficInfoList = (
     'div.col-lg-3:nth-child(2) > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)', '#remain',
     '.bg-diagonal-light-success > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1)')
-with SB(uc=True, pls="none", sjw=True) as sb:  # By default, browser="chrome" if not set
+
+
+def process_account(account, i):
+    """
+    处理单个账户的签到流程
+    :param account: 账户信息列表
+    :param i: 账户索引
+    :return: 处理结果信息
+    """
+    try:
+        urlBase = account[i * 3]
+        username = account[i * 3 + 1] 
+        password = account[i * 3 + 2]
+        
+        # 初始化URL和文件路径
+        urlLogin = 'https://' + urlBase + '/auth/login'
+        urlUser = 'https://' + urlBase + '/user'
+        audioMP3 = f"{urlBase.split('.')[-2]}{i + 1}.mp3"
+        imgFile = f"{urlBase.split('.')[-2]}{i + 1}.png"
+        
+        # 根据URL设置页面元素
+        if 'ikuuu' in urlBase:
+            loginButton, checkinStatus, checkinButton, trafficInfo = loginButtonList[0], checkinStatusList[0], checkinButtonList[1], trafficInfoList[0]
+        elif 'qiushiyun' in urlBase:
+            loginButton, checkinStatus, checkinButton, trafficInfo = loginButtonList[0], checkinStatusList[1], checkinButtonList[0], trafficInfoList[1]
+        elif 'xiaolongyun' in urlBase:
+            loginButton, checkinStatus, checkinButton, trafficInfo = loginButtonList[1], checkinStatusList[2], checkinButtonList[0], trafficInfoList[2]
+        else:
+            raise ValueError(f"不支持的URL: {urlBase}")
+
+        # 执行签到流程
+        if url_open(urlLogin):
+            if recaptcha_checkbox():
+                recaptcha(audioMP3)
+            if login(username, password, loginButton):
+                status = checkin_status(checkinStatus)
+                if not status[0]:
+                    checkin(checkinButton)
+                sb.sleep(3)
+                traffic = traffic_info(urlUser, trafficInfo)
+                status = checkin_status(checkinStatus)
+                sb.sleep(1)
+                return f'账号({i + 1}/{len(account)//3}): [{urlBase.split(".")[-2]}-{username[:3]}***]\n签到状态：{status[1]}\n剩余流量：{traffic}'
+
+    except Exception as e:
+        print(f'[ERROR] - 处理账号时发生错误: {e}')
+        try:
+            imgUrl = screenshot(imgFile)
+            return f'账号({i + 1}/{len(account)//3}): [{urlBase.split(".")[-2]}-{username[:3]}***]\n{e}\n{imgUrl}'
+        except Exception as img_error:
+            print(f'[ERROR] - 截图保存失败: {img_error}')
+            return f'账号({i + 1}/{len(account)//3}): [{urlBase.split(".")[-2]}-{username[:3]}***]\n{e}'
+
+
+with SB(uc=True, pls="none", sjw=True) as sb:
     if urlUserPasswd != '':
         account = urlUserPasswd.split(',')
-        accountNumber = int(len(account) / 3)
-        print('- 🍍 Number of accounts: %s' % accountNumber)
+        accountNumber = len(account) // 3
+        print(f'[INFO] - 开始处理{accountNumber}个账号')
+        
+        results = []
         for i in range(accountNumber):
-            print('- 🍌 Start account: %s' % (i + 1))
-            urlBase = account[i * 3]
-            username = account[i * 3 + 1]
-            password = account[i * 3 + 2]
-            urlLogin = 'https://' + urlBase + '/auth/login'
-            urlUser = 'https://' + urlBase + '/user'
-            audioMP3 = urlBase.split('.')[-2] + str(i + 1) + '.mp3'
-            imgFile = urlBase.split('.')[-2] + str(i + 1) + '.png'
+            print(f'[INFO] - 开始处理第{i+1}个账号')
+            result = process_account(account, i)
+            if result:
+                results.append(result)
             time.sleep(1)
-            if 'ikuuu' in urlBase:
-                loginButton = loginButtonList[0]
-                checkinStatus = checkinStatusList[0]
-                checkinButton = checkinButtonList[1]
-                trafficInfo = trafficInfoList[0]
-            elif 'qiushiyun' in urlBase:
-                loginButton = loginButtonList[0]
-                checkinStatus = checkinStatusList[1]
-                checkinButton = checkinButtonList[0]
-                trafficInfo = trafficInfoList[1]
-            elif 'xiaolongyun' in urlBase:
-                loginButton = loginButtonList[1]
-                checkinStatus = checkinStatusList[2]
-                checkinButton = checkinButtonList[0]
-                trafficInfo = trafficInfoList[2]
-            try:
-                if url_open(urlLogin):
-                    if recaptcha_checkbox():
-                        recaptcha(audioMP3)
-                    if login(username, password, loginButton):
-                        status = checkin_status(checkinStatus)
-                        if not status[0]:
-                            checkin(checkinButton)
-                        sb.sleep(3)
-                        traffic = traffic_info(urlUser, trafficInfo)
-                        status = checkin_status(checkinStatus)
-                        sb.sleep(1)
-                        body.append('账号(%s/%s): [%s-%s***]\n签到状态：%s\n剩余流量：%s' % (
-                            i + 1, accountNumber, urlBase.split('.')[-2], username[:3], status[1], traffic))
-                        # print('- body:', body)
-            except Exception as e:
-                print('- 💥', e)
-                try:
-                    imgUrl = screenshot(imgFile)
-                    body.append('账号(%s/%s): [%s-%s***]\n%s\n%s' % (i + 1, accountNumber, urlBase.split('.')[-2], username[:3], e, imgUrl))
-                except:
-                    # push(e)
-                    body.append('账号(%s/%s): [%s-%s***]\n%s' % (i + 1, accountNumber, urlBase.split('.')[-2], username[:3], e))
-        pushbody = ''
-        for i in range(len(body)):
-            if i + 1 != len(body):
-                pushbody += body[i] +'\n- - -\n'
-            else:
-                pushbody += body[i]
-        push(pushbody)
+            
+        # 拼接并推送结果
+        push_body = '\n- - -\n'.join(results)
+        push(push_body)
     else:
-        print('*** Please Check URL_USER_PASSWD ***')
+        print('[ERROR] - 请检查URL_USER_PASSWD环境变量')
 
 # END
